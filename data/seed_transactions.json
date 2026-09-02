@@ -1,0 +1,162 @@
+[
+  {
+    "raw_input": "sold 5 jars today, 200 each",
+    "expected": {"type": "income", "category": "sales", "amount": 1000, "quantity": 5, "unit_price": 200}
+  },
+  {
+    "raw_input": "paid 300 for jars",
+    "expected": {"type": "expense", "category": "packaging", "amount": 300}
+  },
+  {
+    "raw_input": "bought 2 kg mustard seeds at 80 per kg",
+    "expected": {"type": "expense", "category": "raw_materials", "amount": 160, "quantity": 2, "unit_price": 80}
+  },
+  {
+    "raw_input": "delivery charges 150 rupees",
+    "expected": {"type": "expense", "category": "transport", "amount": 150}
+  },
+  {
+    "raw_input": "customer paid 2500 for bulk order",
+    "expected": {"type": "income", "category": "sales", "amount": 2500}
+  },
+  {
+    "raw_input": "bought 5 kg green chillies, 60 per kg",
+    "expected": {"type": "expense", "category": "raw_materials", "amount": 300, "quantity": 5, "unit_price": 60}
+  },
+  {
+    "raw_input": "sold 10 jars mango pickle 150 each",
+    "expected": {"type": "income", "category": "sales", "amount": 1500, "quantity": 10, "unit_price": 150}
+  },
+  {
+    "raw_input": "paid autorickshaw 80 for delivery",
+    "expected": {"type": "expense", "category": "transport", "amount": 80}
+  },
+  {
+    "raw_input": "got 500 from neighbor for mixed pickle",
+    "expected": {"type": "income", "category": "sales", "amount": 500}
+  },
+  {
+    "raw_input": "bought labels and stickers 220",
+    "expected": {"type": "expense", "category": "packaging", "amount": 220}
+  },
+  {
+    "raw_input": "earned 3000 today from weekly market",
+    "expected": {"type": "income", "category": "sales", "amount": 3000}
+  },
+  {
+    "raw_input": "purchased 1 litre sesame oil for 180",
+    "expected": {"type": "expense", "category": "raw_materials", "amount": 180}
+  },
+  {
+    "raw_input": "sold lime pickle, 8 bottles, 120 each",
+    "expected": {"type": "income", "category": "sales", "amount": 960, "quantity": 8, "unit_price": 120}
+  },
+  {
+    "raw_input": "sent 6 jars to cousin, she'll pay later",
+    "expected": {"type": "income", "category": "sales", "amount": 0, "confidence_max": 0.5}
+  },
+  {
+    "raw_input": "bought vinegar and salt today",
+    "expected": {"type": "expense", "category": "raw_materials", "amount": 0, "confidence_max": 0.5}
+  },
+  {
+    "raw_input": "packaging material from market 380",
+    "expected": {"type": "expense", "category": "packaging", "amount": 380}
+  },
+  {
+    "raw_input": "sold mixed pickles and got 1800",
+    "expected": {"type": "income", "category": "sales", "amount": 1800}
+  },
+  {
+    "raw_input": "spent about 500 on raw materials this week",
+    "expected": {"type": "expense", "category": "raw_materials", "amount": 500}
+  },
+  {
+    "raw_input": "online order paid, 700 rupees",
+    "expected": {"type": "income", "category": "sales", "amount": 700}
+  },
+  {
+    "raw_input": "gas cylinder refill 900",
+    "expected": {"type": "expense", "category": "other", "amount": 900}
+  },
+  {
+    "raw_input": "courier charges for Bangalore order 250",
+    "expected": {"type": "expense", "category": "transport", "amount": 250}
+  },
+  {
+    "raw_input": "received payment for 20 jars at 175 per jar",
+    "expected": {"type": "income", "category": "sales", "amount": 3500, "quantity": 20, "unit_price": 175}
+  },
+  {
+    "raw_input": "bought 3 kg raw mangoes 45 per kg",
+    "expected": {"type": "expense", "category": "raw_materials", "amount": 135, "quantity": 3, "unit_price": 45}
+  },
+  {
+    "raw_input": "gave 5 jars as gift to friend",
+    "expected": {"type": "expense", "category": "other", "amount": 0, "confidence_max": 0.5}
+  },
+  {
+    "raw_input": "sold 2 gift packs at 450 each",
+    "expected": {"type": "income", "category": "sales", "amount": 900, "quantity": 2, "unit_price": 450}
+  },
+  {
+    "raw_input": "picked up 10 kg garlic, paid 120 per kg",
+    "expected": {"type": "expense", "category": "raw_materials", "amount": 1200, "quantity": 10, "unit_price": 120}
+  },
+  {
+    "raw_input": "sold garlic pickle 12 jars 130 each",
+    "expected": {"type": "income", "category": "sales", "amount": 1560, "quantity": 12, "unit_price": 130}
+  },
+  {
+    "raw_input": "some expenses for transport this month",
+    "expected": {"type": "expense", "category": "transport", "amount": 0, "confidence_max": 0.5}
+  },
+  {
+    "raw_input": "client gave 4500 for catering pickles order",
+    "expected": {"type": "income", "category": "sales", "amount": 4500}
+  },
+  {
+    "raw_input": "paid 60 for plastic covers",
+    "expected": {"type": "expense", "category": "packaging", "amount": 60}
+  },
+  {
+    "raw_input": "sold and delivered 15 bottles, charged 100 each plus 50 delivery",
+    "expected": {"type": "income", "category": "sales", "amount": 1550}
+  },
+  {
+    "raw_input": "bought turmeric powder 200g for 40",
+    "expected": {"type": "expense", "category": "raw_materials", "amount": 40}
+  },
+  {
+    "raw_input": "received 600 cash from yesterday's order",
+    "expected": {"type": "income", "category": "sales", "amount": 600}
+  },
+  {
+    "raw_input": "transportation to the market and back 120",
+    "expected": {"type": "expense", "category": "transport", "amount": 120}
+  },
+  {
+    "raw_input": "stickers printed, cost 350",
+    "expected": {"type": "expense", "category": "packaging", "amount": 350}
+  },
+  {
+    "raw_input": "sold 3 jars to office colleague 200 each",
+    "expected": {"type": "income", "category": "sales", "amount": 600, "quantity": 3, "unit_price": 200}
+  },
+  {
+    "raw_input": "bought new set of lids and rubber bands 180",
+    "expected": {"type": "expense", "category": "packaging", "amount": 180}
+  },
+  {
+    "raw_input": "made some income today",
+    "expected": {"type": "income", "category": "sales", "amount": 0, "confidence_max": 0.4}
+  },
+  {
+    "raw_input": "electric bill paid 1100",
+    "expected": {"type": "expense", "category": "other", "amount": 1100}
+  },
+  {
+    "raw_input": "sold 25 jars at the food fair, mixed sizes, total came to 4200",
+    "expected": {"type": "income", "category": "sales", "amount": 4200, "quantity": 25}
+  }
+]
