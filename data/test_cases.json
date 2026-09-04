@@ -1,0 +1,14 @@
+[
+  {"input": "sold 5 jars for 1000",        "expected_type": "income",  "expected_category": "sales",         "expected_amount": 1000,  "should_review": false},
+  {"input": "paid 300 for bottles",         "expected_type": "expense", "expected_category": "packaging",     "expected_amount": 300,   "should_review": false},
+  {"input": "bought oil for 450",           "expected_type": "expense", "expected_category": "raw_materials", "expected_amount": 450,   "should_review": false},
+  {"input": "sold 4 jars at 250 each",      "expected_type": "income",  "expected_category": "sales",         "expected_amount": 1000,  "should_review": false},
+  {"input": "bought bottles today",         "expected_type": "expense", "expected_category": "packaging",     "expected_amount": null,  "should_review": true},
+  {"input": "delivery charges 150",         "expected_type": "expense", "expected_category": "transport",     "expected_amount": 150,   "should_review": false},
+  {"input": "5 jars × 200 each total 1200", "expected_type": "income",  "expected_category": "sales",         "expected_amount": null,  "should_review": true},
+  {"input": "earned 1800 from market",      "expected_type": "income",  "expected_category": "sales",         "expected_amount": 1800,  "should_review": false},
+  {"input": "bought some salt today",       "expected_type": "expense", "expected_category": "raw_materials", "expected_amount": null,  "should_review": true},
+  {"input": "made some income today",       "expected_type": "income",  "expected_category": "sales",         "expected_amount": null,  "should_review": true},
+  {"input": "gas cylinder refill 900",      "expected_type": "expense", "expected_category": "other",         "expected_amount": 900,   "should_review": false},
+  {"input": "received 2500 bulk order",     "expected_type": "income",  "expected_category": "sales",         "expected_amount": 2500,  "should_review": false}
+]

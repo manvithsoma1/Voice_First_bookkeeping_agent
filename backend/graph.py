@@ -5,6 +5,8 @@ Pipeline: parse_node → validate_node → save_node
 
 State flows as a plain dict through the graph so each node can read
 prior outputs and add its own. The final state is returned to the caller.
+
+Schema v2: includes description and status in PipelineState.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ class PipelineState(TypedDict, total=False):
     # After parse_node
     type: str
     category: str
+    description: str | None
     amount: float
     quantity: int | None
     unit_price: float | None
@@ -38,6 +41,7 @@ class PipelineState(TypedDict, total=False):
     # After validate_node
     needs_review: bool
     review_reason: str | None
+    status: str
 
     # After save_node
     id: int

@@ -158,5 +158,89 @@
   {
     "raw_input": "sold 25 jars at the food fair, mixed sizes, total came to 4200",
     "expected": {"type": "income", "category": "sales", "amount": 4200, "quantity": 25}
+  },
+  {
+    "raw_input": "sold four mango pickle jars at two fifty each",
+    "expected": {"type": "income", "category": "sales", "amount": 1000, "quantity": 4, "unit_price": 250}
+  },
+  {
+    "raw_input": "I bought oil and chilli for around five hundred",
+    "expected": {"type": "expense", "category": "raw_materials", "amount": 500}
+  },
+  {
+    "raw_input": "received twelve hundred from market stall",
+    "expected": {"type": "income", "category": "sales", "amount": 1200}
+  },
+  {
+    "raw_input": "paid three hundred and fifty for new glass jars",
+    "expected": {"type": "expense", "category": "packaging", "amount": 350}
+  },
+  {
+    "raw_input": "petrol for delivery bike 200",
+    "expected": {"type": "expense", "category": "transport", "amount": 200}
+  },
+  {
+    "raw_input": "sold some pickle today, got around 800",
+    "expected": {"type": "income", "category": "sales", "amount": 800}
+  },
+  {
+    "raw_input": "bought bottles today",
+    "expected": {"type": "expense", "category": "packaging", "amount": 0, "confidence_max": 0.6}
+  },
+  {
+    "raw_input": "5 jars sold at 200 each, total should be 1200",
+    "expected": {"type": "income", "category": "sales", "amount": 1000}
+  },
+  {
+    "raw_input": "picked up fresh ginger and garlic, total 240",
+    "expected": {"type": "expense", "category": "raw_materials", "amount": 240}
+  },
+  {
+    "raw_input": "WhatsApp order paid — 850 rupees",
+    "expected": {"type": "income", "category": "sales", "amount": 850}
+  },
+  {
+    "raw_input": "sent 10 jars to store on credit",
+    "expected": {"type": "income", "category": "sales", "amount": 0, "confidence_max": 0.5}
+  },
+  {
+    "raw_input": "shipping charges two fifty",
+    "expected": {"type": "expense", "category": "transport", "amount": 250}
+  },
+  {
+    "raw_input": "sold 6 lemon pickle 180 each",
+    "expected": {"type": "income", "category": "sales", "amount": 1080, "quantity": 6, "unit_price": 180}
+  },
+  {
+    "raw_input": "water can refill 30",
+    "expected": {"type": "expense", "category": "other", "amount": 30}
+  },
+  {
+    "raw_input": "purchased cardboard boxes for packing 150",
+    "expected": {"type": "expense", "category": "packaging", "amount": 150}
+  },
+  {
+    "raw_input": "earned well today",
+    "expected": {"type": "income", "category": "sales", "amount": 0, "confidence_max": 0.4}
+  },
+  {
+    "raw_input": "sold 8 mixed pickle jars at 175 rupees each",
+    "expected": {"type": "income", "category": "sales", "amount": 1400, "quantity": 8, "unit_price": 175}
+  },
+  {
+    "raw_input": "Zomato order received 620",
+    "expected": {"type": "income", "category": "sales", "amount": 620}
+  },
+  {
+    "raw_input": "bought 4 kg red chilli powder at 90 per kg",
+    "expected": {"type": "expense", "category": "raw_materials", "amount": 360, "quantity": 4, "unit_price": 90}
+  },
+  {
+    "raw_input": "expenses for wrapping material 95",
+    "expected": {"type": "expense", "category": "packaging", "amount": 95}
+  },
+  {
+    "raw_input": "sold mango pickle online 1500 received",
+    "expected": {"type": "income", "category": "sales", "amount": 1500}
   }
 ]

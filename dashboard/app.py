@@ -1,13 +1,15 @@
 """
-dashboard/app.py — Phase 7: Streamlit front-end.
+dashboard/app.py — Phase 7: Streamlit front-end (v2).
 
 Features:
   • Text input to log a new transaction
   • Audio file upload for voice notes
-  • Transaction table with ⚠ highlighting for needs_review rows
-  • Weekly P&L metrics (income / expenses / net)
+  • P&L overview metrics (income / expenses / net / needs-review count)
+  • P&L time-series line chart
   • Expenses-by-category bar chart
-  • Needs-review exception list
+  • Transaction ledger with description + status columns
+  • Needs-review exception queue with Confirm / Edit / Reject buttons (human-in-the-loop)
+  • Business Insights panel (Phase 2, optional — calls insight_agent)
 """
 
 from __future__ import annotations
@@ -24,6 +26,8 @@ import streamlit as st
 from dotenv import load_dotenv
 
 load_dotenv()
+os.environ.pop("SSLKEYLOGFILE", None)
+
 
 # ─────────────────────────────────────────────
 # Config
@@ -87,33 +91,25 @@ html, body, [class*="css"] {
     display: inline-block;
 }
 
+/* Status tags */
+.tag-confirmed  { background: linear-gradient(135deg,#00b09b,#96c93d);color:white;padding:2px 10px;border-radius:20px;font-size:.78rem;font-weight:600; }
+.tag-needs_review { background: linear-gradient(135deg,#f7971e,#ffd200);color:#1a1a2e;padding:2px 10px;border-radius:20px;font-size:.78rem;font-weight:600; }
+.tag-rejected   { background: rgba(255,107,107,.25);color:#ff6b6b;padding:2px 10px;border-radius:20px;font-size:.78rem;font-weight:600; }
+.tag-pending    { background: rgba(167,139,250,.25);color:#a78bfa;padding:2px 10px;border-radius:20px;font-size:.78rem;font-weight:600; }
+
 /* Income / expense tags */
-.tag-income {
-    background: linear-gradient(135deg, #00b09b, #96c93d);
-    color: white;
-    padding: 2px 10px;
-    border-radius: 20px;
-    font-size: 0.78rem;
-    font-weight: 600;
-}
-.tag-expense {
-    background: linear-gradient(135deg, #f7971e, #ffd200);
-    color: #1a1a2e;
-    padding: 2px 10px;
-    border-radius: 20px;
-    font-size: 0.78rem;
-    font-weight: 600;
-}
+.tag-income  { background: linear-gradient(135deg,#00b09b,#96c93d);color:white;padding:2px 10px;border-radius:20px;font-size:.78rem;font-weight:600; }
+.tag-expense { background: linear-gradient(135deg,#f7971e,#ffd200);color:#1a1a2e;padding:2px 10px;border-radius:20px;font-size:.78rem;font-weight:600; }
 
 /* Section headers */
 h2, h3 { color: #a78bfa !important; }
 
 /* Text input / file upload */
 .stTextArea textarea, .stTextInput input {
-    background: rgba(255,255,255,0.06) !important;
+    background: rgba(255,255,255,0.85) !important;
     border: 1px solid rgba(167,139,250,0.3) !important;
     border-radius: 8px !important;
-    color: #e8eaf6 !important;
+    color: #000000 !important;
 }
 .stTextArea textarea:focus, .stTextInput input:focus {
     border-color: #a78bfa !important;
@@ -133,6 +129,17 @@ h2, h3 { color: #a78bfa !important; }
 .stButton > button[kind="primary"]:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 20px rgba(124,58,237,0.4);
+}
+
+/* Insight cards */
+.insight-card {
+    background: rgba(167,139,250,0.08);
+    border: 1px solid rgba(167,139,250,0.2);
+    border-left: 4px solid #a78bfa;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    line-height: 1.5;
 }
 
 /* Dataframe */
@@ -174,7 +181,11 @@ def api_post_audio(file_bytes: bytes, filename: str) -> dict:
     return r.json()
 
 
-def api_get_transactions(date_from: Optional[datetime] = None, date_to: Optional[datetime] = None) -> list[dict]:
+def api_get_transactions(
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None,
+    exclude_rejected: bool = True,
+) -> list[dict]:
     params: dict = {}
     if date_from:
         params["date_from"] = date_from.isoformat()
@@ -182,7 +193,10 @@ def api_get_transactions(date_from: Optional[datetime] = None, date_to: Optional
         params["date_to"] = date_to.isoformat()
     r = requests.get(f"{API_BASE}/transactions", params=params, timeout=15)
     r.raise_for_status()
-    return r.json()
+    rows = r.json()
+    if exclude_rejected:
+        rows = [t for t in rows if t.get("status") != "rejected"]
+    return rows
 
 
 def api_get_summary(date_from: Optional[datetime] = None, date_to: Optional[datetime] = None) -> dict:
@@ -192,6 +206,18 @@ def api_get_summary(date_from: Optional[datetime] = None, date_to: Optional[date
     if date_to:
         params["date_to"] = date_to.isoformat()
     r = requests.get(f"{API_BASE}/summary", params=params, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+def api_patch_transaction(tx_id: int, payload: dict) -> dict:
+    r = requests.patch(f"{API_BASE}/transactions/{tx_id}", json=payload, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+def api_delete_transaction(tx_id: int) -> dict:
+    r = requests.delete(f"{API_BASE}/transactions/{tx_id}", timeout=15)
     r.raise_for_status()
     return r.json()
 
@@ -212,7 +238,6 @@ with st.sidebar:
     st.markdown("## 📒 Bookkeeping Copilot")
     st.markdown("---")
 
-    # API status indicator
     api_ok = check_api_health()
     if api_ok:
         st.success("✅  API connected", icon=None)
@@ -230,6 +255,9 @@ with st.sidebar:
     else:
         dt_from = None
         dt_to = None
+
+    st.markdown("---")
+    show_rejected = st.checkbox("Show rejected transactions", value=False)
 
     st.markdown("---")
     st.markdown(
@@ -271,17 +299,9 @@ try:
     summary = api_get_summary(dt_from, dt_to)
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.metric(
-            "💰 Total Income",
-            f"₹{summary['total_income']:,.0f}",
-            delta=None,
-        )
+        st.metric("💰 Total Income", f"₹{summary['total_income']:,.0f}")
     with c2:
-        st.metric(
-            "🧾 Total Expenses",
-            f"₹{summary['total_expenses']:,.0f}",
-            delta=None,
-        )
+        st.metric("🧾 Total Expenses", f"₹{summary['total_expenses']:,.0f}")
     with c3:
         net = summary["net_pnl"]
         st.metric(
@@ -336,9 +356,10 @@ with left:
                             f"**Reason:** {result.get('review_reason', 'Low confidence')}"
                         )
                     else:
+                        desc = f" — *{result['description']}*" if result.get("description") else ""
                         st.success(
                             f"✅ Saved!  **{result['type'].upper()}** — "
-                            f"₹{result['amount']:,.0f}  ({result['category']})"
+                            f"₹{result['amount']:,.0f}  ({result['category']}){desc}"
                         )
                     st.rerun()
                 except requests.HTTPError as e:
@@ -383,104 +404,338 @@ with right:
 st.markdown("---")
 
 # ─────────────────────────────────────────────
-# Expenses by Category Chart
+# ⚠️ Human-in-the-Loop: Review Queue
 # ─────────────────────────────────────────────
 
 try:
-    summary_data = api_get_summary(dt_from, dt_to)
-    by_cat = summary_data.get("expenses_by_category", {})
-    if by_cat:
-        st.markdown("### 📊 Expenses by Category")
-        df_cat = pd.DataFrame(
-            list(by_cat.items()), columns=["Category", "Amount"]
-        ).sort_values("Amount", ascending=True)
+    all_transactions = api_get_transactions(dt_from, dt_to, exclude_rejected=False)
+    review_items = [t for t in all_transactions if t.get("needs_review") and t.get("status") != "rejected"]
 
-        fig = px.bar(
-            df_cat,
-            x="Amount",
-            y="Category",
-            orientation="h",
-            color="Amount",
-            color_continuous_scale=["#4f46e5", "#a78bfa", "#7c3aed"],
-            text="Amount",
-            template="plotly_dark",
+    if review_items:
+        st.markdown(f"### ⚠️ Review Queue — {len(review_items)} item(s) need your attention")
+        st.markdown(
+            "<p style='color:#888; font-size:0.9rem; margin-top:-0.5rem;'>"
+            "The AI was uncertain about these transactions. Review and confirm, edit, or reject each one."
+            "</p>",
+            unsafe_allow_html=True,
         )
-        fig.update_traces(
-            texttemplate="₹%{text:,.0f}",
-            textposition="outside",
-        )
-        fig.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(255,255,255,0.03)",
-            font=dict(family="Inter", color="#e8eaf6"),
-            coloraxis_showscale=False,
-            margin=dict(l=0, r=60, t=20, b=20),
-            height=max(250, len(by_cat) * 55),
-        )
-        st.plotly_chart(fig, use_container_width=True)
+
+        for item in review_items:
+            tx_id = item["id"]
+            label = f"[#{tx_id}]  \"{item['raw_input'][:70]}\""
+
+            with st.expander(f"⚠️ {label}", expanded=True):
+                # ── Current parse result ──────────────────────────────────
+                col_info, col_actions = st.columns([1.6, 1])
+
+                with col_info:
+                    st.markdown(f"**Type:** `{item['type']}`")
+                    st.markdown(f"**Category:** `{item['category']}`")
+                    if item.get("description"):
+                        st.markdown(f"**Description:** {item['description']}")
+                    st.markdown(f"**Amount:** ₹{item['amount']:,.0f}")
+                    if item.get("quantity"):
+                        st.markdown(f"**Quantity:** {item['quantity']}")
+                    if item.get("unit_price"):
+                        st.markdown(f"**Unit Price:** ₹{item['unit_price']:,.0f}")
+                    st.markdown(f"**Confidence:** {item['confidence']:.0%}")
+                    st.markdown(
+                        f"<div style='margin-top:8px; padding:8px 12px; "
+                        f"background:rgba(255,107,107,0.1); border-left:3px solid #ff6b6b; "
+                        f"border-radius:4px; font-size:0.85rem;'>"
+                        f"🔍 {item.get('review_reason', 'Uncertain parse')}"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                with col_actions:
+                    st.markdown("**Actions**")
+
+                    # ── Quick Confirm ──
+                    if st.button(
+                        "✅ Confirm as-is",
+                        key=f"confirm_{tx_id}",
+                        use_container_width=True,
+                    ):
+                        try:
+                            api_patch_transaction(
+                                tx_id,
+                                {"status": "confirmed", "needs_review": False, "review_reason": None},
+                            )
+                            st.success("Confirmed!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+
+                    # ── Reject ──
+                    if st.button(
+                        "🗑️ Reject",
+                        key=f"reject_{tx_id}",
+                        use_container_width=True,
+                    ):
+                        try:
+                            api_delete_transaction(tx_id)
+                            st.info("Rejected and excluded from P&L.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+
+                # ── Edit form ────────────────────────────────────────────
+                with st.expander("✏️ Edit and confirm", expanded=False):
+                    CATEGORIES = ["sales", "raw_materials", "packaging", "transport", "other"]
+                    TYPES = ["income", "expense"]
+
+                    e_type = st.selectbox(
+                        "Type",
+                        TYPES,
+                        index=TYPES.index(item["type"]) if item["type"] in TYPES else 0,
+                        key=f"edit_type_{tx_id}",
+                    )
+                    e_cat = st.selectbox(
+                        "Category",
+                        CATEGORIES,
+                        index=CATEGORIES.index(item["category"]) if item["category"] in CATEGORIES else 0,
+                        key=f"edit_cat_{tx_id}",
+                    )
+                    e_desc = st.text_input(
+                        "Description",
+                        value=item.get("description") or "",
+                        key=f"edit_desc_{tx_id}",
+                    )
+                    e_amount = st.number_input(
+                        "Amount (₹)",
+                        value=float(item["amount"]),
+                        min_value=0.0,
+                        step=1.0,
+                        key=f"edit_amount_{tx_id}",
+                    )
+                    e_qty = st.number_input(
+                        "Quantity (optional)",
+                        value=int(item["quantity"]) if item.get("quantity") else 0,
+                        min_value=0,
+                        step=1,
+                        key=f"edit_qty_{tx_id}",
+                    )
+                    e_price = st.number_input(
+                        "Unit Price (₹, optional)",
+                        value=float(item["unit_price"]) if item.get("unit_price") else 0.0,
+                        min_value=0.0,
+                        step=1.0,
+                        key=f"edit_price_{tx_id}",
+                    )
+
+                    if st.button("💾 Save Edits & Confirm", key=f"save_{tx_id}", type="primary"):
+                        try:
+                            payload = {
+                                "type": e_type,
+                                "category": e_cat,
+                                "description": e_desc or None,
+                                "amount": e_amount,
+                                "quantity": int(e_qty) if e_qty > 0 else None,
+                                "unit_price": float(e_price) if e_price > 0 else None,
+                                "status": "confirmed",
+                                "needs_review": False,
+                                "review_reason": None,
+                            }
+                            api_patch_transaction(tx_id, payload)
+                            st.success("Saved and confirmed!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error saving: {e}")
+
         st.markdown("---")
-except Exception:
-    pass   # silently skip chart if API unavailable
+
+except Exception as e:
+    if api_ok:
+        st.error(f"Could not load review queue: {e}")
 
 
 # ─────────────────────────────────────────────
-# Transaction Table
+# Charts
+# ─────────────────────────────────────────────
+
+try:
+    transactions = api_get_transactions(dt_from, dt_to, exclude_rejected=not show_rejected)
+
+    if transactions:
+        df = pd.DataFrame(transactions)
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+
+        chart_col1, chart_col2 = st.columns(2)
+
+        # ── P&L Time-Series ──
+        with chart_col1:
+            st.markdown("### 📈 P&L Over Time")
+            df_ts = df.copy()
+            df_ts["date"] = df_ts["timestamp"].dt.date
+            daily = df_ts.groupby(["date", "type"])["amount"].sum().reset_index()
+
+            income_daily = daily[daily["type"] == "income"].rename(columns={"amount": "Income"})
+            expense_daily = daily[daily["type"] == "expense"].rename(columns={"amount": "Expenses"})
+            merged = pd.merge(
+                income_daily[["date", "Income"]],
+                expense_daily[["date", "Expenses"]],
+                on="date",
+                how="outer",
+            ).fillna(0).sort_values("date")
+            merged["Profit"] = merged["Income"] - merged["Expenses"]
+
+            if len(merged) > 0:
+                fig_ts = go.Figure()
+                fig_ts.add_trace(go.Scatter(
+                    x=merged["date"], y=merged["Income"],
+                    name="Income", line=dict(color="#00b09b", width=2),
+                    fill="tozeroy", fillcolor="rgba(0,176,155,0.1)"
+                ))
+                fig_ts.add_trace(go.Scatter(
+                    x=merged["date"], y=merged["Expenses"],
+                    name="Expenses", line=dict(color="#f7971e", width=2),
+                    fill="tozeroy", fillcolor="rgba(247,151,30,0.1)"
+                ))
+                fig_ts.add_trace(go.Scatter(
+                    x=merged["date"], y=merged["Profit"],
+                    name="Profit", line=dict(color="#a78bfa", width=2, dash="dot"),
+                ))
+                fig_ts.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(255,255,255,0.02)",
+                    font=dict(family="Inter", color="#e8eaf6"),
+                    legend=dict(bgcolor="rgba(0,0,0,0)"),
+                    margin=dict(l=0, r=0, t=20, b=20),
+                    height=280,
+                    xaxis=dict(showgrid=False),
+                    yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)"),
+                )
+                st.plotly_chart(fig_ts, use_container_width=True)
+            else:
+                st.info("Log more transactions to see the time-series chart.")
+
+        # ── Expenses by Category ──
+        with chart_col2:
+            summary_data = api_get_summary(dt_from, dt_to)
+            by_cat = summary_data.get("expenses_by_category", {})
+            if by_cat:
+                st.markdown("### 🧾 Expenses by Category")
+                df_cat = pd.DataFrame(
+                    list(by_cat.items()), columns=["Category", "Amount"]
+                ).sort_values("Amount", ascending=True)
+
+                fig_cat = px.bar(
+                    df_cat, x="Amount", y="Category", orientation="h",
+                    color="Amount",
+                    color_continuous_scale=["#4f46e5", "#a78bfa", "#7c3aed"],
+                    text="Amount",
+                    template="plotly_dark",
+                )
+                fig_cat.update_traces(
+                    texttemplate="₹%{text:,.0f}", textposition="outside"
+                )
+                fig_cat.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(255,255,255,0.03)",
+                    font=dict(family="Inter", color="#e8eaf6"),
+                    coloraxis_showscale=False,
+                    margin=dict(l=0, r=60, t=20, b=20),
+                    height=280,
+                )
+                st.plotly_chart(fig_cat, use_container_width=True)
+            else:
+                st.info("No expense data to chart yet.", icon="📊")
+
+        st.markdown("---")
+
+except Exception:
+    pass
+
+
+# ─────────────────────────────────────────────
+# Transaction Ledger
 # ─────────────────────────────────────────────
 
 st.markdown("### 🗂️ Transaction Ledger")
 
 try:
-    transactions = api_get_transactions(dt_from, dt_to)
+    transactions = api_get_transactions(dt_from, dt_to, exclude_rejected=not show_rejected)
     if not transactions:
         st.info("No transactions yet. Log your first one above!", icon="📭")
     else:
         df = pd.DataFrame(transactions)
 
-        # Format columns
         df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.strftime("%d %b %Y  %H:%M")
         df["amount_fmt"] = df["amount"].apply(lambda x: f"₹{x:,.0f}")
         df["confidence_fmt"] = df["confidence"].apply(lambda x: f"{x:.0%}")
+        df["description"] = df.get("description", pd.Series([""] * len(df))).fillna("")
 
-        # Build display dataframe
         display_cols = {
             "timestamp": "Date/Time",
             "type": "Type",
             "category": "Category",
+            "description": "Description",
             "amount_fmt": "Amount",
             "confidence_fmt": "Confidence",
-            "needs_review": "⚠ Review",
+            "status": "Status",
             "raw_input": "Original Note",
         }
-        df_display = df[[c for c in display_cols.keys() if c in df.columns]].rename(
-            columns=display_cols
-        )
+        df_display = df[
+            [c for c in display_cols.keys() if c in df.columns]
+        ].rename(columns=display_cols)
 
-        # Style: highlight needs_review rows in amber
-        def highlight_review(row):
-            if row.get("⚠ Review") is True:
-                return ["background-color: rgba(247,151,30,0.12); border-left: 3px solid #f7971e"] * len(row)
+        def highlight_row(row):
+            status_val = row.get("Status", "")
+            if status_val == "needs_review":
+                return ["background-color: rgba(247,151,30,0.10); border-left: 3px solid #f7971e"] * len(row)
+            if status_val == "rejected":
+                return ["background-color: rgba(255,107,107,0.06); opacity:0.6"] * len(row)
+            if status_val == "confirmed":
+                return ["background-color: rgba(0,176,155,0.05)"] * len(row)
             return [""] * len(row)
 
-        styled = df_display.style.apply(highlight_review, axis=1)
-        st.dataframe(styled, use_container_width=True, height=400)
-
-        # Needs-review exception list
-        review_df = df[df["needs_review"] == True]
-        if not review_df.empty:
-            st.markdown(f"#### ⚠️ Exception List — {len(review_df)} item(s) needing review")
-            for _, row in review_df.iterrows():
-                with st.expander(f"[{row['timestamp']}]  \"{row['raw_input'][:70]}\""):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown(f"**Type:** `{row['type']}`")
-                        st.markdown(f"**Category:** `{row['category']}`")
-                        st.markdown(f"**Amount:** ₹{row['amount']:,.0f}")
-                    with col2:
-                        st.markdown(f"**Confidence:** {row['confidence']:.0%}")
-                        st.markdown(f"**Reason:** {row.get('review_reason', 'Unknown')}")
+        styled = df_display.style.apply(highlight_row, axis=1)
+        st.dataframe(styled, use_container_width=True, height=420)
 
 except Exception as e:
     if not api_ok:
         st.info("Start the backend API to see your ledger.", icon="ℹ️")
     else:
         st.error(f"Could not load transactions: {e}")
+
+st.markdown("---")
+
+# ─────────────────────────────────────────────
+# Business Insights (Phase 2 — optional)
+# ─────────────────────────────────────────────
+
+with st.expander("💡 Business Insights (AI-generated)", expanded=False):
+    st.markdown(
+        "<p style='color:#888; font-size:0.88rem;'>"
+        "Insights are generated from your stored transaction history. "
+        "The AI only references data it was given — it never invents financial facts."
+        "</p>",
+        unsafe_allow_html=True,
+    )
+
+    col_insight, col_btn = st.columns([3, 1])
+    with col_btn:
+        insight_days = st.selectbox("Period", [7, 14, 30, 90], index=2, key="insight_days")
+        gen_btn = st.button("🔍 Generate Insights", key="btn_insights", type="primary")
+
+    if gen_btn:
+        if not api_ok:
+            st.error("API is not reachable.")
+        else:
+            with st.spinner("Analysing your transaction history…"):
+                try:
+                    # Call insight endpoint directly (we'll add it to the API later)
+                    # For now, import and call the agent from within the dashboard
+                    import sys, os as _os
+                    _os.chdir(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+                    sys.path.insert(0, _os.getcwd())
+                    from backend.agents.insight_agent import generate_insights
+                    insights = generate_insights(days=insight_days)
+                    for insight in insights:
+                        st.markdown(
+                            f"<div class='insight-card'>💡 {insight}</div>",
+                            unsafe_allow_html=True,
+                        )
+                except Exception as e:
+                    st.error(f"Could not generate insights: {e}")

@@ -4,20 +4,25 @@ validator_agent.py — Phase 4: the honesty layer.
 Takes the raw parser output and applies rule-based sanity checks.
 Sets needs_review=True and populates review_reason whenever anything
 looks wrong — this is what drives the "honest exception list" in the dashboard.
+
+Uses backend.services.calculations for deterministic math checks and
+backend.services.categories for allowed-value constants.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-ALLOWED_TYPES = {"income", "expense"}
-ALLOWED_CATEGORIES = {"sales", "raw_materials", "packaging", "transport", "other"}
+from backend.services.categories import ALLOWED_CATEGORIES, ALLOWED_TYPES
+from backend.services.calculations import (
+    AMOUNT_SANITY_LIMIT,
+    check_math_consistency,
+    is_amount_positive,
+    is_amount_sane,
+)
 
 # Below this confidence threshold the transaction is always flagged for review
 CONFIDENCE_THRESHOLD = 0.6
-
-# Suspiciously large single amounts (could be typos)
-AMOUNT_SANITY_LIMIT = 500_000
 
 
 def validate(parsed_transaction: dict[str, Any]) -> dict[str, Any]:
@@ -30,6 +35,7 @@ def validate(parsed_transaction: dict[str, Any]) -> dict[str, Any]:
     Returns the same dict enriched with:
         needs_review (bool)
         review_reason (str | None)
+        status (str) — "needs_review" | "pending"
     """
     tx = dict(parsed_transaction)  # don't mutate the original
     reasons: list[str] = []
@@ -48,7 +54,7 @@ def validate(parsed_transaction: dict[str, Any]) -> dict[str, Any]:
             f"(expected: {', '.join(sorted(ALLOWED_CATEGORIES))})"
         )
 
-    # ── 3. Amount check ──────────────────────────────────────────────
+    # ── 3. Amount checks ─────────────────────────────────────────────
     amount = tx.get("amount", 0)
     try:
         amount = float(amount)
@@ -56,30 +62,26 @@ def validate(parsed_transaction: dict[str, Any]) -> dict[str, Any]:
         amount = 0.0
         reasons.append("Amount could not be parsed as a number.")
 
-    if amount <= 0:
+    if not is_amount_positive(amount):
         reasons.append(
             f"Amount is {amount} — must be positive. "
             "No amount was detected in the input."
         )
 
-    if amount > AMOUNT_SANITY_LIMIT:
+    if not is_amount_sane(amount):
         reasons.append(
             f"Amount {amount:,.0f} exceeds sanity limit {AMOUNT_SANITY_LIMIT:,.0f} "
             "— possible typo or unit mismatch."
         )
 
-    # ── 4. Quantity / unit_price consistency ─────────────────────────
-    quantity = tx.get("quantity")
-    unit_price = tx.get("unit_price")
-
-    if quantity is not None and unit_price is not None:
-        expected_amount = quantity * unit_price
-        # Allow 1 % rounding tolerance
-        if abs(expected_amount - amount) / max(amount, 1) > 0.01:
-            reasons.append(
-                f"Amount ({amount}) doesn't match quantity × unit_price "
-                f"({quantity} × {unit_price} = {expected_amount})."
-            )
+    # ── 4. Deterministic math consistency ────────────────────────────
+    consistent, math_reason = check_math_consistency(
+        amount=amount,
+        quantity=tx.get("quantity"),
+        unit_price=tx.get("unit_price"),
+    )
+    if not consistent and math_reason:
+        reasons.append(math_reason)
 
     # ── 5. Low-confidence check ───────────────────────────────────────
     confidence = tx.get("confidence", 0.0)
@@ -95,7 +97,9 @@ def validate(parsed_transaction: dict[str, Any]) -> dict[str, Any]:
         )
 
     # ── 6. Write results ─────────────────────────────────────────────
-    tx["needs_review"] = len(reasons) > 0
+    has_issues = len(reasons) > 0
+    tx["needs_review"] = has_issues
     tx["review_reason"] = " | ".join(reasons) if reasons else None
+    tx["status"] = "needs_review" if has_issues else "pending"
 
     return tx

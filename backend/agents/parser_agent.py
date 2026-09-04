@@ -5,6 +5,8 @@ parser_agent.py — Phase 2 & 3
 
 Parsing prompt is designed to be reliable on home-business voice notes.
 A retry loop catches malformed JSON before it ever leaves this module.
+
+Schema v2: includes `description` field per master plan section 9.
 """
 
 from __future__ import annotations
@@ -20,6 +22,8 @@ from dotenv import load_dotenv
 from groq import Groq
 
 load_dotenv()
+os.environ.pop("SSLKEYLOGFILE", None)
+
 
 # ─────────────────────────────────────────────
 # Client
@@ -41,7 +45,7 @@ def _get_client() -> Groq:
 
 
 # ─────────────────────────────────────────────
-# System prompt (Phase 2 design)
+# System prompt
 # ─────────────────────────────────────────────
 
 PARSE_SYSTEM_PROMPT = """You are a bookkeeping assistant for a small home business (specifically a home pickle/condiment business).
@@ -50,7 +54,8 @@ Parse the following spoken or typed note into a structured transaction.
 Return ONLY valid JSON — no markdown fences, no explanation — with EXACTLY these fields:
 - type: "income" or "expense"
 - category: one of ["sales", "raw_materials", "packaging", "transport", "other"]
-- amount: total amount as a number (calculate quantity × unit_price if both given)
+- description: a short description of the item/service (e.g. "mango pickle jars", "mustard seeds"), null if unclear
+- amount: total amount as a number (calculate quantity × unit_price if both given); use 0 if amount is not mentioned
 - quantity: number of units if mentioned, else null
 - unit_price: price per unit if mentioned, else null
 - confidence: your confidence 0.0–1.0 that this parse is correct
@@ -68,11 +73,18 @@ Confidence guidance:
   0.5–0.69 → ambiguous input, best-guess parse
   < 0.5    → very unclear, missing critical info (e.g. no amount)
 
+IMPORTANT RULES:
+1. Extract only information supported by the input — never invent amounts.
+2. If amount is not mentioned, set amount to 0 (not a guess).
+3. If quantity × unit_price is given, calculate the amount yourself.
+4. Return null for any field you cannot determine from the text.
+
 Examples:
-"sold 5 jars today, 200 each" → {"type":"income","category":"sales","amount":1000,"quantity":5,"unit_price":200,"confidence":0.95}
-"paid 300 for jars" → {"type":"expense","category":"packaging","amount":300,"quantity":null,"unit_price":null,"confidence":0.90}
-"bought chillies and mustard seeds, spent around 450" → {"type":"expense","category":"raw_materials","amount":450,"quantity":null,"unit_price":null,"confidence":0.85}
-"delivery charges for last week" → {"type":"expense","category":"transport","amount":0,"quantity":null,"unit_price":null,"confidence":0.30}
+"sold 5 jars today, 200 each" → {"type":"income","category":"sales","description":"pickle jars","amount":1000,"quantity":5,"unit_price":200,"confidence":0.95}
+"paid 300 for jars" → {"type":"expense","category":"packaging","description":"jars","amount":300,"quantity":null,"unit_price":null,"confidence":0.90}
+"bought chillies and mustard seeds, spent around 450" → {"type":"expense","category":"raw_materials","description":"chillies and mustard seeds","amount":450,"quantity":null,"unit_price":null,"confidence":0.85}
+"delivery charges for last week" → {"type":"expense","category":"transport","description":"delivery charges","amount":0,"quantity":null,"unit_price":null,"confidence":0.30}
+"bought some bottles today" → {"type":"expense","category":"packaging","description":"bottles","amount":0,"quantity":null,"unit_price":null,"confidence":0.45}
 """
 
 
@@ -117,8 +129,15 @@ def _normalise_parsed(data: dict, raw_input: str) -> dict:
     if category not in allowed_categories:
         category = "other"
 
+    # description — free text, truncate if very long
+    description = data.get("description")
+    if description is not None:
+        description = str(description).strip()[:200] or None
+
     try:
         amount = float(data.get("amount", 0) or 0)
+        if amount < 0:
+            amount = 0.0
     except (TypeError, ValueError):
         amount = 0.0
 
@@ -144,6 +163,7 @@ def _normalise_parsed(data: dict, raw_input: str) -> dict:
     return {
         "type": tx_type,
         "category": category,
+        "description": description,
         "amount": amount,
         "quantity": quantity,
         "unit_price": unit_price,
@@ -175,7 +195,7 @@ def parse_transaction(raw_input: str, max_retries: int = 3) -> dict:
                     {"role": "user", "content": raw_input},
                 ],
                 temperature=temperature,
-                max_tokens=256,
+                max_tokens=300,
             )
 
             content = response.choices[0].message.content or ""
