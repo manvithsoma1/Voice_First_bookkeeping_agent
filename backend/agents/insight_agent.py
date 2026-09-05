@@ -135,7 +135,7 @@ def generate_insights(days: int = 30) -> list[str]:
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="llama-3.1-70b-versatile",
             messages=[
                 {"role": "system", "content": INSIGHT_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},

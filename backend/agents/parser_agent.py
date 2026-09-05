@@ -176,50 +176,65 @@ def _normalise_parsed(data: dict, raw_input: str) -> dict:
 # Public: parse_transaction
 # ─────────────────────────────────────────────
 
+# Models tried in order — confirmed available on this Groq account
+_CANDIDATE_MODELS = [
+    "groq/compound",          # primary — Groq's own compound reasoning model
+    "openai/gpt-oss-120b",    # strong fallback
+    "openai/gpt-oss-20b",     # fast last resort
+]
+
+
 def parse_transaction(raw_input: str, max_retries: int = 3) -> dict:
     """
     Call the Groq LLM and return a normalised transaction dict.
 
-    Retries up to `max_retries` times on JSON parse failure, using
-    slightly higher temperature on each retry to unstick the model.
+    Iterates through _CANDIDATE_MODELS; within each model retries up to
+    `max_retries` times on JSON parse failure. Skips a model entirely if
+    Groq returns a model_decommissioned / invalid_request error.
     """
     client = _get_client()
 
-    for attempt in range(1, max_retries + 1):
-        temperature = 0.1 + (attempt - 1) * 0.15  # 0.1 → 0.25 → 0.40
-        try:
-            response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": PARSE_SYSTEM_PROMPT},
-                    {"role": "user", "content": raw_input},
-                ],
-                temperature=temperature,
-                max_tokens=300,
-            )
-
-            content = response.choices[0].message.content or ""
-            data = _extract_json(content)
-            return _normalise_parsed(data, raw_input)
-
-        except ValueError as exc:
-            print(f"[parser] Attempt {attempt}/{max_retries} failed JSON parse: {exc}")
-            if attempt < max_retries:
-                time.sleep(0.5)
-            else:
-                # Fallback: return a low-confidence placeholder so the pipeline
-                # doesn't crash — the validator will flag it for review.
-                print("[parser] All retries exhausted — returning fallback transaction.")
-                return _normalise_parsed(
-                    {"confidence": 0.1, "amount": 0},
-                    raw_input,
+    for model in _CANDIDATE_MODELS:
+        for attempt in range(1, max_retries + 1):
+            temperature = 0.1 + (attempt - 1) * 0.15
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": PARSE_SYSTEM_PROMPT},
+                        {"role": "user", "content": raw_input},
+                    ],
+                    temperature=temperature,
+                    max_tokens=300,
                 )
-        except Exception as exc:
-            print(f"[parser] Groq API error on attempt {attempt}: {exc}")
-            if attempt < max_retries:
-                time.sleep(1.0)
-            else:
-                raise
+
+                content = response.choices[0].message.content or ""
+                data = _extract_json(content)
+                if model != _CANDIDATE_MODELS[0]:
+                    print(f"[parser] Used fallback model: {model}")
+                return _normalise_parsed(data, raw_input)
+
+            except ValueError as exc:
+                print(f"[parser] {model} attempt {attempt}/{max_retries} bad JSON: {exc}")
+                if attempt < max_retries:
+                    time.sleep(0.5)
+                else:
+                    break  # try next model
+
+            except Exception as exc:
+                err_str = str(exc)
+                if "model_decommissioned" in err_str or "invalid_request_error" in err_str:
+                    print(f"[parser] Model {model} unavailable, trying next...")
+                    break  # skip directly to next model
+                print(f"[parser] {model} attempt {attempt} error: {exc}")
+                if attempt < max_retries:
+                    time.sleep(1.0)
+                else:
+                    break  # try next model
+
+    # All models exhausted — return low-confidence placeholder
+    print("[parser] All models exhausted — returning fallback transaction.")
+    return _normalise_parsed({"confidence": 0.1, "amount": 0}, raw_input)
 
 
 # ─────────────────────────────────────────────
